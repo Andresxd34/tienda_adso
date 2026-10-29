@@ -64,3 +64,10 @@ class PedidoResumen(BaseModel):
 
 class PedidoDetalle(PedidoResumen):
     items: list[ItemPedidoRespuesta]
+
+
+class VentaPorCliente(BaseModel):
+    cliente_id: int
+    cliente: str
+    total_pedidos: int
+    total_vendido: Decimal

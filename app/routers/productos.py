@@ -1,11 +1,14 @@
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
+from pymysql.err import IntegrityError
 
 from app.database import conectar
 from app.schemas import ProductoCrear, ProductoRespuesta
 
 router = APIRouter(prefix="/productos", tags=["Productos"])
+
+MYSQL_ERROR_LLAVE_FORANEA = 1451
 
 
 def _escapar_like(texto: str) -> str:
@@ -59,6 +62,25 @@ def crear_producto(datos: ProductoCrear):
         return cur.fetchone()
 
 
+@router.put("/{producto_id}", response_model=ProductoRespuesta)
+def actualizar_producto(producto_id: int, datos: ProductoCrear):
+    with conectar() as db, db.cursor() as cur:
+        cur.execute(
+            "SELECT id FROM productos WHERE id = %s FOR UPDATE", (producto_id,)
+        )
+        if cur.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Producto no encontrado")
+        cur.execute(
+            "UPDATE productos SET nombre = %s, precio = %s, stock = %s WHERE id = %s",
+            (datos.nombre, datos.precio, datos.stock, producto_id),
+        )
+        cur.execute(
+            "SELECT id, nombre, precio, stock FROM productos WHERE id = %s",
+            (producto_id,),
+        )
+        return cur.fetchone()
+
+
 @router.patch("/{producto_id}/stock", response_model=ProductoRespuesta)
 def actualizar_stock(producto_id: int, stock: Annotated[int, Query(ge=0)]):
     with conectar() as db, db.cursor() as cur:
@@ -75,3 +97,18 @@ def actualizar_stock(producto_id: int, stock: Annotated[int, Query(ge=0)]):
             (producto_id,),
         )
         return cur.fetchone()
+
+
+@router.delete("/{producto_id}", status_code=204)
+def eliminar_producto(producto_id: int):
+    try:
+        with conectar() as db, db.cursor() as cur:
+            cur.execute("DELETE FROM productos WHERE id = %s", (producto_id,))
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Producto no encontrado")
+    except IntegrityError as exc:
+        if exc.args and exc.args[0] == MYSQL_ERROR_LLAVE_FORANEA:
+            raise HTTPException(
+                status_code=409, detail="El producto aparece en pedidos existentes"
+            ) from exc
+        raise

@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tienda ADSO</title>
+<style>
+:root { --bg:#f6f7f9; --fg:#1c1f24; --card:#fff; --borde:#d9dde3; --acento:#2563eb; --ok:#15803d; --error:#b91c1c; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#14171c; --fg:#e8eaed; --card:#1e232a; --borde:#323946; --acento:#60a5fa; --ok:#4ade80; --error:#f87171; }
+}
+* { box-sizing: border-box; }
+body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--fg); }
+header { display:flex; justify-content:space-between; align-items:center; padding:1rem 1.5rem; border-bottom:1px solid var(--borde); background:var(--card); }
+header h1 { margin:0; font-size:1.25rem; }
+header a { color:var(--acento); text-decoration:none; }
+nav { display:flex; gap:.5rem; padding:1rem 1.5rem 0; flex-wrap:wrap; }
+nav button.activo { background:var(--acento); color:#fff; border-color:var(--acento); }
+main { padding:1rem 1.5rem 3rem; max-width:1000px; margin:0 auto; }
+section { background:var(--card); border:1px solid var(--borde); border-radius:10px; padding:1rem 1.25rem; margin-top:1rem; }
+h2 { margin-top:0; font-size:1.1rem; }
+h3 { font-size:1rem; margin:1rem 0 .5rem; }
+form, .fila { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin-bottom:1rem; }
+input, select, button { font:inherit; padding:.45rem .7rem; border:1px solid var(--borde); border-radius:6px; background:var(--card); color:var(--fg); }
+input { flex:1; min-width:140px; }
+button { cursor:pointer; }
+button.primario { background:var(--acento); color:#fff; border-color:var(--acento); }
+button.peligro { color:var(--error); border-color:var(--error); }
+button:disabled { opacity:.45; cursor:not-allowed; }
+table { width:100%; border-collapse:collapse; font-size:.92rem; }
+th, td { text-align:left; padding:.5rem; border-bottom:1px solid var(--borde); }
+td.acciones { display:flex; gap:.35rem; flex-wrap:wrap; }
+td.num, th.num { text-align:right; }
+ul { padding-left:1.2rem; }
+#mensaje { position:fixed; bottom:1rem; right:1rem; max-width:min(420px, 90vw); padding:.75rem 1rem; border-radius:8px; color:#fff; box-shadow:0 4px 14px rgba(0,0,0,.25); }
+#mensaje.ok { background:var(--ok); }
+#mensaje.error { background:var(--error); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Tienda ADSO</h1>
+  <a href="/docs" target="_blank">Documentación Swagger</a>
+</header>
+<nav>
+  <button data-tab="clientes">Clientes</button>
+  <button data-tab="productos">Productos</button>
+  <button data-tab="pedidos">Pedidos</button>
+  <button data-tab="reportes">Reportes</button>
+</nav>
+<main>
+  <section id="clientes" hidden>
+    <h2>Clientes</h2>
+    <form id="form-cliente">
+      <input name="nombre" placeholder="Nombre" required minlength="2" maxlength="100">
+      <input name="correo" type="email" placeholder="Correo" required maxlength="120">
+      <button class="primario" type="submit">Crear cliente</button>
+    </form>
+    <table>
+      <thead><tr><th>ID</th><th>Nombre</th><th>Correo</th><th>Acciones</th></tr></thead>
+      <tbody id="tabla-clientes"></tbody>
+    </table>
+    <div id="detalle-clientes"></div>
+  </section>
+
+  <section id="productos" hidden>
+    <h2>Productos</h2>
+    <form id="form-producto">
+      <input name="nombre" placeholder="Nombre" required minlength="2" maxlength="100">
+      <input name="precio" type="number" placeholder="Precio" required min="0.01" step="0.01">
+      <input name="stock" type="number" placeholder="Stock" required min="0" step="1">
+      <button class="primario" type="submit">Crear producto</button>
+    </form>
+    <div class="fila">
+      <input id="buscar" placeholder="Buscar por nombre">
+      <button id="btn-buscar">Buscar</button>
+    </div>
+    <table>
+      <thead><tr><th>ID</th><th>Nombre</th><th class="num">Precio</th><th class="num">Stock</th><th>Acciones</th></tr></thead>
+      <tbody id="tabla-productos"></tbody>
+    </table>
+  </section>
+
+  <section id="pedidos" hidden>
+    <h2>Nuevo pedido</h2>
+    <div class="fila">
+      <select id="sel-cliente"></select>
+    </div>
+    <div class="fila">
+      <select id="sel-producto"></select>
+      <input id="cantidad" type="number" min="1" value="1" style="max-width:100px">
+      <button id="agregar-item">Agregar</button>
+    </div>
+    <ul id="lista-carrito"></ul>
+    <button id="crear-pedido" class="primario">Crear pedido</button>
+
+    <h2 style="margin-top:1.5rem">Pedidos</h2>
+    <table>
+      <thead><tr><th>ID</th><th>Cliente</th><th>Fecha</th><th>Estado</th><th class="num">Total</th><th>Acciones</th></tr></thead>
+      <tbody id="tabla-pedidos"></tbody>
+    </table>
+    <div id="detalle-pedido"></div>
+  </section>
+
+  <section id="reportes" hidden>
+    <h2>Ventas por cliente</h2>
+    <table>
+      <thead><tr><th>Cliente</th><th class="num">Pedidos</th><th class="num">Total vendido</th></tr></thead>
+      <tbody id="tabla-reportes"></tbody>
+    </table>
+  </section>
+</main>
+<div id="mensaje" hidden></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const dinero = (v) => Number(v).toLocaleString("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
+const accion = (fn) => async (...args) => {
+  try { await fn(...args); } catch (e) { aviso(e.message, true); }
+};
+
+let carrito = [];
+let catalogo = [];
+let clientesCache = [];
+let temporizador;
+
+function aviso(texto, error = false) {
+  const m = $("#mensaje");
+  m.textContent = texto;
+  m.className = error ? "error" : "ok";
+  m.hidden = false;
+  clearTimeout(temporizador);
+  temporizador = setTimeout(() => (m.hidden = true), 4500);
+}
+
+async function api(ruta, opciones = {}) {
+  const r = await fetch(ruta, { headers: { "Content-Type": "application/json" }, ...opciones });
+  if (r.status === 204) return null;
+  const datos = await r.json().catch(() => null);
+  if (!r.ok) {
+    let detalle = datos && datos.detail;
+    if (Array.isArray(detalle)) detalle = detalle.map((d) => `${d.loc.slice(1).join(".")}: ${d.msg}`).join(" | ");
+    throw new Error(`${r.status} - ${detalle || "Error inesperado"}`);
+  }
+  return datos;
+}
+
+const cargadores = { clientes: cargarClientes, productos: cargarProductos, pedidos: cargarPedidos, reportes: cargarReporte };
+
+function mostrar(id) {
+  document.querySelectorAll("section").forEach((s) => (s.hidden = s.id !== id));
+  document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("activo", b.dataset.tab === id));
+  accion(cargadores[id])();
+}
+
+document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => mostrar(b.dataset.tab)));
+
+async function cargarClientes() {
+  clientesCache = await api("/clientes");
+  $("#tabla-clientes").innerHTML = clientesCache.map((c) => `
+    <tr>
+      <td>${c.id}</td><td>${esc(c.nombre)}</td><td>${esc(c.correo)}</td>
+      <td class="acciones">
+        <button data-accion="cliente-pedidos" data-id="${c.id}">Pedidos</button>
+        <button data-accion="cliente-editar" data-id="${c.id}">Editar</button>
+        <button class="peligro" data-accion="cliente-eliminar" data-id="${c.id}">Eliminar</button>
+      </td>
+    </tr>`).join("");
+}
+
+$("#form-cliente").addEventListener("submit", accion(async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  await api("/clientes", { method: "POST", body: JSON.stringify({ nombre: f.nombre.value, correo: f.correo.value }) });
+  f.reset();
+  aviso("Cliente creado");
+  await cargarClientes();
+}));
+
+async function editarCliente(id) {
+  const c = clientesCache.find((x) => x.id === Number(id));
+  const nombre = prompt("Nombre", c.nombre);
+  if (nombre === null) return;
+  const correo = prompt("Correo", c.correo);
+  if (correo === null) return;
+  await api(`/clientes/${id}`, { method: "PUT", body: JSON.stringify({ nombre, correo }) });
+  aviso("Cliente actualizado");
+  await cargarClientes();
+}
+
+async function eliminarCliente(id) {
+  if (!confirm("¿Eliminar este cliente?")) return;
+  await api(`/clientes/${id}`, { method: "DELETE" });
+  aviso("Cliente eliminado");
+  $("#detalle-clientes").innerHTML = "";
+  await cargarClientes();
+}
+
+async function pedidosDeCliente(id) {
+  const lista = await api(`/clientes/${id}/pedidos`);
+  $("#detalle-clientes").innerHTML = lista.length
+    ? `<h3>Pedidos del cliente ${id}</h3><ul>${lista.map((p) => `<li>#${p.id} - ${new Date(p.fecha).toLocaleString("es-CO")} - ${esc(p.estado)} - ${dinero(p.total)}</li>`).join("")}</ul>`
+    : `<h3>El cliente ${id} no tiene pedidos</h3>`;
+}
+
+async function cargarProductos() {
+  const q = $("#buscar").value.trim();
+  const productos = await api("/productos?limite=50" + (q ? "&buscar=" + encodeURIComponent(q) : ""));
+  $("#tabla-productos").innerHTML = productos.map((p) => `
+    <tr>
+      <td>${p.id}</td><td>${esc(p.nombre)}</td>
+      <td class="num">${dinero(p.precio)}</td><td class="num">${p.stock}</td>
+      <td class="acciones">
+        <button data-accion="producto-stock" data-id="${p.id}" data-stock="${p.stock}">Stock</button>
+        <button class="peligro" data-accion="producto-eliminar" data-id="${p.id}">Eliminar</button>
+      </td>
+    </tr>`).join("");
+}
+
+$("#btn-buscar").addEventListener("click", accion(cargarProductos));
+$("#buscar").addEventListener("keydown", (e) => { if (e.key === "Enter") accion(cargarProductos)(); });
+
+$("#form-producto").addEventListener("submit", accion(async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  await api("/productos", {
+    method: "POST",
+    body: JSON.stringify({ nombre: f.nombre.value, precio: f.precio.value, stock: Number(f.stock.value) }),
+  });
+  f.reset();
+  aviso("Producto creado");
+  await cargarProductos();
+}));
+
+async function cambiarStock(id, actual) {
+  const valor = prompt("Nuevo stock", actual);
+  if (valor === null) return;
+  await api(`/productos/${id}/stock?stock=${encodeURIComponent(valor)}`, { method: "PATCH" });
+  aviso("Stock actualizado");
+  await cargarProductos();
+}
+
+async function eliminarProducto(id) {
+  if (!confirm("¿Eliminar este producto?")) return;
+  await api(`/productos/${id}`, { method: "DELETE" });
+  aviso("Producto eliminado");
+  await cargarProductos();
+}
+
+function pintarCarrito() {
+  $("#lista-carrito").innerHTML = carrito.map((i) => {
+    const p = catalogo.find((x) => x.id === i.producto_id);
+    const nombre = p ? p.nombre : `Producto ${i.producto_id}`;
+    return `<li>${esc(nombre)} x ${i.cantidad} <button data-accion="item-quitar" data-id="${i.producto_id}">Quitar</button></li>`;
+  }).join("");
+}
+
+function pintarDetalle(p) {
+  $("#detalle-pedido").innerHTML = `
+    <h3>Pedido #${p.id} - ${esc(p.cliente)} (${esc(p.estado)})</h3>
+    <table>
+      <thead><tr><th>Producto</th><th class="num">Cantidad</th><th class="num">Precio unitario</th><th class="num">Subtotal</th></tr></thead>
+      <tbody>${p.items.map((i) => `<tr><td>${esc(i.producto)}</td><td class="num">${i.cantidad}</td><td class="num">${dinero(i.precio_unitario)}</td><td class="num">${dinero(i.subtotal)}</td></tr>`).join("")}</tbody>
+    </table>
+    <p><strong>Total: ${dinero(p.total)}</strong></p>`;
+}
+
+async function cargarPedidos() {
+  const [clientes, productos, pedidos] = await Promise.all([api("/clientes"), api("/productos?limite=50"), api("/pedidos")]);
+  catalogo = productos;
+  $("#sel-cliente").innerHTML = clientes.map((c) => `<option value="${c.id}">${esc(c.nombre)}</option>`).join("");
+  $("#sel-producto").innerHTML = productos.map((p) => `<option value="${p.id}">${esc(p.nombre)} (stock ${p.stock}) - ${dinero(p.precio)}</option>`).join("");
+  pintarCarrito();
+  $("#tabla-pedidos").innerHTML = pedidos.map((p) => `
+    <tr>
+      <td>${p.id}</td><td>${esc(p.cliente)}</td>
+      <td>${new Date(p.fecha).toLocaleString("es-CO")}</td><td>${esc(p.estado)}</td>
+      <td class="num">${dinero(p.total)}</td>
+      <td class="acciones">
+        <button data-accion="pedido-ver" data-id="${p.id}">Ver</button>
+        <button class="peligro" data-accion="pedido-cancelar" data-id="${p.id}" ${p.estado === "cancelado" ? "disabled" : ""}>Cancelar</button>
+      </td>
+    </tr>`).join("");
+}
+
+$("#agregar-item").addEventListener("click", () => {
+  const producto_id = Number($("#sel-producto").value);
+  const cantidad = Number($("#cantidad").value);
+  if (!producto_id || cantidad < 1) return aviso("Elija un producto y una cantidad válida", true);
+  if (carrito.some((i) => i.producto_id === producto_id)) return aviso("Ese producto ya está en el pedido", true);
+  carrito.push({ producto_id, cantidad });
+  pintarCarrito();
+});
+
+$("#crear-pedido").addEventListener("click", accion(async () => {
+  if (!carrito.length) return aviso("Agregue al menos un producto", true);
+  const pedido = await api("/pedidos", {
+    method: "POST",
+    body: JSON.stringify({ cliente_id: Number($("#sel-cliente").value), items: carrito }),
+  });
+  carrito = [];
+  aviso(`Pedido ${pedido.id} creado. Total ${dinero(pedido.total)}`);
+  await cargarPedidos();
+  pintarDetalle(pedido);
+}));
+
+async function verPedido(id) {
+  pintarDetalle(await api(`/pedidos/${id}`));
+}
+
+async function cancelarPedido(id) {
+  if (!confirm("¿Cancelar este pedido y devolver el stock?")) return;
+  const pedido = await api(`/pedidos/${id}/cancelar`, { method: "POST" });
+  aviso(`Pedido ${id} cancelado`);
+  await cargarPedidos();
+  pintarDetalle(pedido);
+}
+
+async function cargarReporte() {
+  const filas = await api("/reportes/ventas-por-cliente");
+  $("#tabla-reportes").innerHTML = filas.map((f) => `
+    <tr><td>${esc(f.cliente)}</td><td class="num">${f.total_pedidos}</td><td class="num">${dinero(f.total_vendido)}</td></tr>`).join("");
+}
+
+const acciones = {
+  "cliente-pedidos": (b) => pedidosDeCliente(b.dataset.id),
+  "cliente-editar": (b) => editarCliente(b.dataset.id),
+  "cliente-eliminar": (b) => eliminarCliente(b.dataset.id),
+  "producto-stock": (b) => cambiarStock(b.dataset.id, b.dataset.stock),
+  "producto-eliminar": (b) => eliminarProducto(b.dataset.id),
+  "item-quitar": (b) => { carrito = carrito.filter((i) => i.producto_id !== Number(b.dataset.id)); pintarCarrito(); },
+  "pedido-ver": (b) => verPedido(b.dataset.id),
+  "pedido-cancelar": (b) => cancelarPedido(b.dataset.id),
+};
+
+document.addEventListener("click", accion(async (e) => {
+  const b = e.target.closest("button[data-accion]");
+  if (b) await acciones[b.dataset.accion](b);
+}));
+
+mostrar("clientes");
+</script>
+</body>
+</html>
